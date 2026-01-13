@@ -1,0 +1,33 @@
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Python cache / compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*$py.class
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+PKG-INFO
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE / editor settings
+.vscode/
+.idea/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Test cache
+.pytest_cache/
