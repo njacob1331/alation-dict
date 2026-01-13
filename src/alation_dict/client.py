@@ -1,4 +1,5 @@
 import json
+from collections.abc import Iterator
 import requests
 from urllib.parse import urljoin
 
@@ -29,25 +30,25 @@ class Client:
     """
 
     def __init__(self, api_token: str):
-        self.headers = {
-            "accept": "application/json",
-            "token": api_token
-        }
-        self.params = {
+        self.params: dict[str, str] | None = {
             "fields": "id,name,title,description",
             "custom_fields": json.dumps([ {"field_id": 10049, "value": "Approved"} ])
         }
-        self.session = requests.Session()
-        self.base_url = "https://alation.medcity.net/integration/v2/column/"
-        self.next_response_url = self.base_url
+        self.session: requests.Session = requests.Session()
+        self.session.headers.update({
+            "accept": "application/json",
+            "token": api_token
+        })
+        self.base_url: str = "https://alation.medcity.net/integration/v2/column/"
+        self.next_response_url: str | None = self.base_url
 
-    def __get(self):
+    def _get(self):
         """
         Internal Client method for performing GET request to Alation API
         """
         response = self.session.get(
             url=self.next_response_url or self.base_url,
-            headers=self.headers,
+            headers=self.session.headers,
             params=self.params,
             verify=False
         )
@@ -64,10 +65,9 @@ class Client:
         return [Record(**record) for record in response.json()]
 
 
-    def api_response(self):
+    def api_response(self) -> Iterator[Record]:
         """
         Iterates through paginated API responses and yields each record.
         """
         while self.next_response_url:
-            for record in self.__get():
-                yield record
+            yield from self._get()

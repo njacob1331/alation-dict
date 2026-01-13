@@ -1,16 +1,18 @@
 from bs4 import BeautifulSoup
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 class Record(BaseModel):
     """
-    Class which adds stronger typing for both the Alation API response object
+    Type respresenting both the Alation API response object
     and corresponding dictionary entry.
     """
+    model_config = ConfigDict(extra="allow")
+
     id: int
     name: str
     title: str
     description: str
 
     @field_validator("description")
-    def format_description(cls, v):
+    def format_description(cls, v: str):
         return BeautifulSoup(v, "html.parser").get_text(strip=True)

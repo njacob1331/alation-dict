@@ -1,10 +1,22 @@
 import json
 from datetime import datetime, UTC
 from pathlib import Path
+from typing import TypedDict, cast
 from rapidfuzz import process
 from collections import defaultdict
 
 from .record import Record
+
+class RawRecord(TypedDict):
+    id: int
+    name: str
+    title: str
+    description: str
+
+
+class DictionaryFile(TypedDict):
+    last_update: str
+    data: list[RawRecord]
 
 class Dictionary:
     """
@@ -21,12 +33,12 @@ class Dictionary:
         file = Path(path)
 
         if not file.exists():
-            file.write_text('{"last_update": "", "data": []}', encoding="utf-8")
+            _ = file.write_text('{"last_update": "", "data": []}', encoding="utf-8")
 
         with open(file, "r", encoding="utf-8") as dictionary:
-            records = json.load(dictionary)
+            records = cast(DictionaryFile, json.load(dictionary))
 
-        self.file = file
+        self.file: Path = file
         self.index: dict[int, Record] = {}
         self.name_index: defaultdict[str, list[Record]] = defaultdict(list)
 
@@ -35,8 +47,8 @@ class Dictionary:
             self.index[r.id] = r
             self.name_index[r.name].append(r)
 
-        self.new_record_count = 0
-        self.updated_record_count = 0
+        self.new_record_count: int = 0
+        self.updated_record_count: int = 0
 
     def records(self):
         """
