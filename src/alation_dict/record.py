@@ -6,7 +6,10 @@ class Record(BaseModel):
     Type respresenting both the Alation API response object
     and corresponding dictionary entry.
     """
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        frozen=True
+    )
 
     id: int
     name: str
