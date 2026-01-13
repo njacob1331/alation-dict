@@ -1,8 +1,10 @@
 # Alation data dictionary
 Api client and dictionary manager for storing, updating, and quickly accessing column-level records from Alation based on data governance approval criteria.
 
-## Install
+## Install Dependencies
 pip install -r requirements.txt
+
+## Install package locally
 pip install -e .
 
 ## Recommended usage
