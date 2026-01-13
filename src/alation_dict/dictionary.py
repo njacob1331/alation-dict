@@ -2,7 +2,7 @@ import json
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import TypedDict, cast
-from rapidfuzz import process
+from rapidfuzz import fuzz, process
 from collections import defaultdict
 
 from .record import Record
@@ -56,7 +56,7 @@ class Dictionary:
         """
         return list(self.index.values())
 
-    def lookup(self, lookup_value: str):
+    def lookup(self, lookup_value: str) -> list[Record]:
         """
         Performs a direct lookup based on the 'name' field
 
@@ -64,7 +64,19 @@ class Dictionary:
         ----
         This method may return multiple records all of which share the same 'name' value.
         """
-        return self.name_index.get(lookup_value) or []
+        records = self.name_index.get(lookup_value)
+        if not records:
+            return []
+
+        seen: set[str] = set()
+        unique: list[Record] = []
+
+        for r in records:
+            if r.description not in seen:
+                seen.add(r.description)
+                unique.append(r)
+
+        return unique
 
     def fuzzy_lookup(self, lookup_value: str, threshold: int) -> list[Record]:
         """
@@ -75,7 +87,7 @@ class Dictionary:
         This method may return multiple records all of which share the same 'name' value.
         """
         options = set(self.name_index.keys())
-        search_result = process.extractOne(lookup_value, options)
+        search_result = process.extractOne(lookup_value, options, scorer=fuzz.WRatio)
 
         if search_result is None:
             return []
