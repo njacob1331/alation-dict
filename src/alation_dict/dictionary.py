@@ -44,7 +44,7 @@ class Dictionary:
         self.name_index: defaultdict[str, list[Record]] = defaultdict(list)
 
         for raw in records["data"]:
-            r = Record(**raw)
+            r = Record.model_construct(**raw)
             self.index[r.id] = r
             self.name_index[r.name].append(r)
 
