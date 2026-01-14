@@ -1,4 +1,5 @@
 import json
+import csv
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import TypedDict, cast
@@ -7,16 +8,16 @@ from collections import defaultdict
 
 from .record import Record
 
-class RawRecord(TypedDict):
+class FileRecord(TypedDict, total=False):
     id: int
     name: str
     title: str
     description: str
-
+    url: str
 
 class DictionaryFile(TypedDict):
     last_update: str
-    data: list[RawRecord]
+    data: list[FileRecord]
 
 class Dictionary:
     """
@@ -88,12 +89,13 @@ class Dictionary:
         """
         options = set(self.name_index.keys())
         search_result = process.extractOne(lookup_value, options, scorer=fuzz.WRatio)
+        empty: list[Record] = []
 
         if search_result is None:
-            return []
+            return empty
         else:
             best_match, score, _ = search_result
-            return self.lookup(best_match) if score > threshold else []
+            return self.lookup(best_match) if score > threshold else empty
 
     def add(self, record: Record):
         """
@@ -109,6 +111,16 @@ class Dictionary:
             self.index[record.id] = record
             self.name_index[record.name].append(record)
             self.updated_record_count += 1
+
+    def export_records(self, records: list[Record], path: str):
+        """
+        Exports a list of records as csv to the specified path
+        """
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "name", "title", "description"])
+            for r in records:
+                writer.writerow([r.id, r.name, r.title, r.description])
 
     def save(self):
         """
