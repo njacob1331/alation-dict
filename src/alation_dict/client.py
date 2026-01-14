@@ -31,7 +31,7 @@ class Client:
 
     def __init__(self, api_token: str):
         self.params: dict[str, str] | None = {
-            "fields": "id,name,title,description",
+            "fields": "id,name,title,description,url",
             "custom_fields": json.dumps([ {"field_id": 10049, "value": "Approved"} ])
         }
         self.session: requests.Session = requests.Session()
