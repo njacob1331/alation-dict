@@ -66,8 +66,11 @@ class Client:
         )
     }
 
-    def __init__(self, api_token: str, config_path: str):
-        config = Config.load(config_path)
+    def __init__(self, api_token: str, config_path: str | None = None):
+        if config_path is not None:
+            config = Config.load(config_path)
+        else:
+            config = None
 
         self.params: dict[str, str] = config.serialize() if config is not None else self.DEFAULT_CONFIG
         self.session: requests.Session = requests.Session()
