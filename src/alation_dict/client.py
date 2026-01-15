@@ -1,9 +1,48 @@
 import json
 from collections.abc import Iterator
+from pydantic import BaseModel, ConfigDict
 import requests
 from urllib.parse import urljoin
 
 from .record import Record
+
+class CustomField(BaseModel):
+    field_id: int
+    value: str
+
+class Config(BaseModel):
+    fields: str
+    custom_fields: list[CustomField]
+
+    model_config = ConfigDict(
+        extra="allow",
+        frozen=True
+    )
+
+    @classmethod
+    def load(cls, path: str) -> Config | None:
+        try:
+            with open(path, "r") as f:
+                raw = json.load(f)
+
+            custom_fields = [
+                CustomField(**cf) for cf in raw["custom_fields"]
+            ]
+
+            return cls(
+                fields=raw["fields"],
+                custom_fields=custom_fields
+            )
+        except Exception:
+            return None
+
+    def serialize(self) -> dict[str, str]:
+        return {
+            "fields": self.fields,
+            "custom_fields": json.dumps(
+                [cf.__dict__ for cf in self.custom_fields]
+            )
+        }
 
 class Client:
     """
@@ -16,24 +55,21 @@ class Client:
 
     Request params
     --------------
-    Default parameters are set to filter for verification status = 'Approved'.
-    Alation only allows for filtering by one custom field (which verification status is) at a time.
-    Relevant custom fields:
-        how verified field id = 10048
-        verification status field id = 10049
+    Request params are set via a config file (json). If the file cannot be read, default params are set.
 
-    Notes
-    -----
-    There is no mechanism for explicity excluding columns which already exist in the dictionary from the request.
-    Additionally, there is no way to filter by when records were added (ex give me all records entered after some date).
-    As such, client-side filtering is performed within the Dictionary class to ensure no duplicate records from the API response are added to the dictionary.
     """
 
-    def __init__(self, api_token: str):
-        self.params: dict[str, str] | None = {
-            "fields": "id,name,title,description,url",
-            "custom_fields": json.dumps([ {"field_id": 10049, "value": "Approved"} ])
-        }
+    DEFAULT_CONFIG: dict[str,str] = {
+        "fields": "id,name,title,description,url",
+        "custom_fields": json.dumps(
+            [{"field_id": 10049, "value": "Approved"}]
+        )
+    }
+
+    def __init__(self, api_token: str, config_path: str):
+        config = Config.load(config_path)
+
+        self.params: dict[str, str] = config.serialize() if config is not None else self.DEFAULT_CONFIG
         self.session: requests.Session = requests.Session()
         self.session.headers.update({
             "accept": "application/json",
@@ -59,10 +95,9 @@ class Client:
         self.next_response_url = (
             urljoin(self.base_url, next_page) if next_page else None
         )
-        # params are set to None after the first request as they are already present in X-Next-Page urls
-        self.params = None
 
-        return [Record(**record) for record in response.json()]
+        for record in response.json():
+            yield Record(**record)
 
 
     def api_response(self) -> Iterator[Record]:
