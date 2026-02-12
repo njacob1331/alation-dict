@@ -4,6 +4,9 @@ from pydantic import BaseModel, ConfigDict
 import requests
 from urllib.parse import urljoin
 
+import warnings
+warnings.filterwarnings("ignore")
+
 from .record import Record
 
 class CustomField(BaseModel):
@@ -20,27 +23,33 @@ class Config(BaseModel):
     )
 
     @classmethod
-    def load(cls, path: str) -> Config | None:
+    def load_or_default(cls, path: str | None) -> Config:
+        if path is None:
+            return cls.default()
         try:
             with open(path, "r") as f:
                 raw = json.load(f)
-
-            custom_fields = [
-                CustomField(**cf) for cf in raw["custom_fields"]
-            ]
-
-            return cls(
-                fields=raw["fields"],
-                custom_fields=custom_fields
-            )
+            return cls(**raw)
         except Exception:
-            return None
+            return cls.default()
+
+    @classmethod
+    def default(cls) -> Config:
+        return cls(
+            fields="id,name,title,description,url",
+            custom_fields=[
+                CustomField(
+                    field_id=10049,
+                    value="Approved"
+                )
+            ]
+        )
 
     def serialize(self) -> dict[str, str]:
         return {
             "fields": self.fields,
             "custom_fields": json.dumps(
-                [cf.__dict__ for cf in self.custom_fields]
+                [cf.model_dump() for cf in self.custom_fields]
             )
         }
 
@@ -55,29 +64,21 @@ class Client:
 
     Request params
     --------------
-    Request params are set via a config file (json). If the file cannot be read, default params are set.
+    Request params are set via a config file (json). If a file is not provided or
+    the file cannot be read, default params are set.
 
     """
 
-    DEFAULT_CONFIG: dict[str,str] = {
-        "fields": "id,name,title,description,url",
-        "custom_fields": json.dumps(
-            [{"field_id": 10049, "value": "Approved"}]
-        )
-    }
+    def __init__(self, auth_token: str, config_path: str | None = None):
+        config = Config.load_or_default(config_path)
 
-    def __init__(self, api_token: str, config_path: str | None = None):
-        if config_path is not None:
-            config = Config.load(config_path)
-        else:
-            config = None
-
-        self.params: dict[str, str] = config.serialize() if config is not None else self.DEFAULT_CONFIG
+        self.params: dict[str, str] = config.serialize()
         self.session: requests.Session = requests.Session()
         self.session.headers.update({
             "accept": "application/json",
-            "token": api_token
+            "token": auth_token
         })
+
         self.base_url: str = "https://alation.medcity.net/integration/v2/column/"
         self.next_response_url: str | None = self.base_url
 
@@ -87,8 +88,7 @@ class Client:
         """
         response = self.session.get(
             url=self.next_response_url or self.base_url,
-            headers=self.session.headers,
-            params=self.params,
+            params=self.params if self.next_response_url == self.base_url else None,
             verify=False
         )
 
@@ -101,7 +101,6 @@ class Client:
 
         for record in response.json():
             yield Record(**record)
-
 
     def api_response(self) -> Iterator[Record]:
         """
