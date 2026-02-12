@@ -1,27 +1,13 @@
-import json
 import csv
-from datetime import datetime, UTC
-from pathlib import Path
-from typing import TypedDict, cast
 from rapidfuzz import fuzz, process
 from collections import defaultdict
 
 from .record import Record
-
-class FileRecord(TypedDict, total=False):
-    id: int
-    name: str
-    title: str
-    description: str
-    url: str
-
-class DictionaryFile(TypedDict):
-    last_update: str
-    data: list[FileRecord]
+from .storage import Storage
 
 class Dictionary:
     """
-    Responsible for managing the approved column definition dictionary from Alation.
+    Responsible for managing the approved column definition dictionary.
     Methods are provided to perform both direct and fuzzy lookups of records by 'name'.
     'name' corresponds to a column name in Alation.
 
@@ -30,28 +16,21 @@ class Dictionary:
     Initializing this class will read from the specified path or create it. The path must point to a json file.
     """
 
-    def __init__(self, path: str):
-        file = Path(path)
-
-        if not file.exists():
-            _ = file.write_text('{"last_update": "", "data": []}', encoding="utf-8")
-
-        with open(file, "r", encoding="utf-8") as dictionary:
-            records = cast(DictionaryFile, json.load(dictionary))
-
-        self.file: Path = file
+    def __init__(self, storage: Storage):
+        self.storage: Storage = storage
         self.index: dict[int, Record] = {}
-        self.name_index: defaultdict[str, list[Record]] = defaultdict(list)
+        self.name_index: defaultdict[str, set[int]] = defaultdict(set)
 
-        for raw in records["data"]:
-            r = Record.model_construct(**raw)
+        for r in self.storage.read():
             self.index[r.id] = r
-            self.name_index[r.name].append(r)
+            self.name_index[r.name].add(r.id)
+
+        self._name_cache = tuple(sorted(self.name_index.keys()))
 
         self.new_record_count: int = 0
         self.updated_record_count: int = 0
 
-    def records(self):
+    def records(self) -> list[Record]:
         """
         Returns all the records in the dictionary
         """
@@ -65,19 +44,21 @@ class Dictionary:
         ----
         This method may return multiple records all of which share the same 'name' value.
         """
-        records = self.name_index.get(lookup_value)
-        if not records:
-            return []
+        ids = self.name_index.get(lookup_value)
 
+        return [self.index[id] for id in ids] if ids else []
+
+    def unique(self, records: list[Record]) -> list[Record]:
         seen: set[str] = set()
         unique: list[Record] = []
 
-        for r in records:
-            if r.description not in seen:
-                seen.add(r.description)
-                unique.append(r)
+        for record in records:
+            if not record.description in seen:
+                seen.add(record.description)
+                unique.append(record)
 
         return unique
+
 
     def fuzzy_lookup(self, lookup_value: str, threshold: int) -> list[Record]:
         """
@@ -87,50 +68,78 @@ class Dictionary:
         ----
         This method may return multiple records all of which share the same 'name' value.
         """
-        options = set(self.name_index.keys())
-        search_result = process.extractOne(lookup_value, options, scorer=fuzz.WRatio)
-        empty: list[Record] = []
+        search_result = process.extractOne(lookup_value, self._name_cache, scorer=fuzz.WRatio)
 
         if search_result is None:
-            return empty
+            return []
         else:
             best_match, score, _ = search_result
-            return self.lookup(best_match) if score > threshold else empty
+            return self.lookup(best_match) if score >= threshold else []
 
-    def add(self, record: Record):
-        """
-        Adds or updates records in the dictionary. Existing records are skipped
-        """
-        lookup = self.index.get(record.id)
+    def _refresh_name_cache(self) -> None:
+        self._name_cache = tuple(sorted(self.name_index.keys()))
 
-        if lookup is None:
+    def add(self, record: Record) -> None:
+        """
+        Adds or updates records in the dictionary. Existing records are skipped.
+        """
+        existing = self.index.get(record.id)
+
+        # skip existing records
+        if existing == record:
+            return
+
+        # add new records
+        if existing is None:
             self.index[record.id] = record
-            self.name_index[record.name].append(record)
+            before = len(self.name_index)
+            self.name_index[record.name].add(record.id)
+
+            if len(self.name_index) != before:
+                self._refresh_name_cache()
+
             self.new_record_count += 1
-        elif lookup != record:
-            self.index[record.id] = record
-            self.name_index[record.name].append(record)
-            self.updated_record_count += 1
+            return
 
-    def export_records(self, records: list[Record], path: str):
+        # patch name index if our record is stale
+        if existing.name != record.name:
+            self.name_index[existing.name].discard(record.id)
+            self.name_index[record.name].add(record.id)
+
+            if not self.name_index[existing.name]:
+                del self.name_index[existing.name]
+
+            self._refresh_name_cache()
+        else:
+            self.name_index[record.name].add(record.id)
+
+        # patch index if our record is stale
+        self.index[record.id] = record
+        self.updated_record_count += 1
+
+    def _generate_insert_query(self, record: Record):
+        fields = list(Record.model_fields.keys())
+        cols = ", ".join(fields)
+        placeholders = ", ".join([f"@{f}" for f in fields])
+        values = [getattr(record, f) for f in fields]
+        query = f"INSERT INTO some_table ({cols}) VALUES ({placeholders});"
+
+        return query, values
+
+
+    def export_records(self, records: list[Record], path: str) -> None:
         """
         Exports a list of records as csv to the specified path
         """
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["id", "name", "title", "description"])
+            writer.writerow(Record.model_fields.keys())
             for r in records:
-                writer.writerow([r.id, r.name, r.title, r.description])
+                writer.writerow(r.model_dump().values())
 
-    def save(self):
-        """
-        Writes to the dictionary file only if new records were added or existing records were updated.
-        """
-        if self.new_record_count > 0 or self.updated_record_count > 0:
-            output = {
-                "last_update": datetime.now(UTC).isoformat(),
-                "data": [record.model_dump() for record in self.index.values()]
-            }
+    def has_updates(self) -> bool:
+        return self.new_record_count > 0 or self.updated_record_count > 0
 
-            with open(self.file, "w", encoding="utf-8") as f:
-                json.dump(output, f, ensure_ascii=False, indent=2)
+    def save(self) -> None:
+        if self.has_updates():
+            self.storage.write(self.records())
