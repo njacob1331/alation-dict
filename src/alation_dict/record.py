@@ -27,3 +27,9 @@ class Record(BaseModel):
     @field_validator("url")
     def format_url(cls, v: str):
         return urljoin(cls.base_url, v)
+
+    def diff(self, comp: Record):
+        a = set(self.model_dump().items())
+        b = set(comp.model_dump().items())
+
+        return a ^ b
