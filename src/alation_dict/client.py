@@ -1,110 +1,110 @@
+from enum import Enum
 import json
 from collections.abc import Iterator
-from pydantic import BaseModel, ConfigDict
+from typing import Any
 import requests
 from urllib.parse import urljoin
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 from .record import Record
 
-class CustomField(BaseModel):
-    field_id: int
-    value: str
-
-class Config(BaseModel):
-    fields: str
-    custom_fields: list[CustomField]
-
-    model_config = ConfigDict(
-        extra="allow",
-        frozen=True
-    )
-
-    @classmethod
-    def load_or_default(cls, path: str | None) -> Config:
-        if path is None:
-            return cls.default()
-        try:
-            with open(path, "r") as f:
-                raw = json.load(f)
-            return cls(**raw)
-        except Exception:
-            return cls.default()
-
-    @classmethod
-    def default(cls) -> Config:
-        return cls(
-            fields="id,name,title,description,url",
-            custom_fields=[
-                CustomField(
-                    field_id=10049,
-                    value="Approved"
-                )
-            ]
-        )
-
-    def serialize(self) -> dict[str, str]:
-        return {
-            "fields": self.fields,
-            "custom_fields": json.dumps(
-                [cf.model_dump() for cf in self.custom_fields]
-            )
-        }
+class Endpoint(Enum):
+    COLUMN = 0
 
 class Client:
     """
-    API client for the Alation 'column' endpoint: https://alation.medcity.net/integration/v2/column/
+    API client for Alation endpoints.
 
     Auth
     ----
     Client requires authentication via API or Refresh token
     Authentication info: https://developer.alation.com/dev/docs/authentication-into-alation-apis
-
-    Request params
-    --------------
-    Request params are set via a config file (json). If a file is not provided or
-    the file cannot be read, default params are set.
-
     """
 
-    def __init__(self, auth_token: str, config_path: str | None = None):
-        config = Config.load_or_default(config_path)
-
-        self.params: dict[str, str] = config.serialize()
+    def __init__(self, auth_token: str):
+        self.base_url: str = "https://alation.medcity.net/"
         self.session: requests.Session = requests.Session()
         self.session.headers.update({
             "accept": "application/json",
             "token": auth_token
         })
 
-        self.base_url: str = "https://alation.medcity.net/integration/v2/column/"
-        self.next_response_url: str | None = self.base_url
-
-    def _get(self):
+    def _get(self, url: str, params: dict[str, Any] | None):
         """
-        Internal Client method for performing GET request to Alation API
+        Internal method for handling GET request boilerplate.
         """
         response = self.session.get(
-            url=self.next_response_url or self.base_url,
-            params=self.params if self.next_response_url == self.base_url else None,
+            url=url,
+            params=params,
             verify=False
         )
 
         response.raise_for_status()
 
         next_page = response.headers.get("X-Next-Page")
-        self.next_response_url = (
-            urljoin(self.base_url, next_page) if next_page else None
+        next_page_url = urljoin(self.base_url, next_page) if next_page else None
+
+        return response, next_page_url
+
+    def _get_integration_v2_column(self):
+        """
+        GET request for the integration/v2/column/ endpoint
+        """
+
+        url = urljoin(self.base_url, "/integration/v2/column/")
+        params = {
+            "fields": "id,name,title,description,url,ds_id,table_name,custom_fields",
+            "ds_id": 15,
+            "custom_fields": json.dumps(
+                [{"field_id": 10049, "value": "Approved"}]
+            )
+        }
+
+        while url:
+            response, url = self._get(url, params)
+            params = None
+
+            for record in response.json():
+                yield Record(**record)
+
+    def get(self, endpoint: Endpoint) -> Iterator[Record]:
+        """
+        GET request to endpoint
+        """
+
+        # this pattern makes it easy to support more endpoints in the future
+        match endpoint:
+            case Endpoint.COLUMN:
+                yield from self._get_integration_v2_column()
+
+    def _patch(self, url: str, body: dict[str, Any]):
+        """
+        Internal method for handling PATCH request boilerplate.
+        """
+
+        response = self.session.patch(
+            url=url,
+            json=[body],
+            verify=False
         )
 
-        for record in response.json():
-            yield Record(**record)
+        response.raise_for_status()
 
-    def api_response(self) -> Iterator[Record]:
+    def _patch_integration_v2_column(self, body: dict[str, Any]):
         """
-        Iterates through paginated API responses and yields each record.
+        PATCH request for the integration/v2/column/ endpoint
         """
-        while self.next_response_url:
-            yield from self._get()
+
+        url = urljoin(self.base_url, "/integration/v2/document/?ds_id=15")
+        self._patch(url, body)
+
+    def patch(self, endpoint: Endpoint, body: dict[str, Any]):
+        """
+        PATCH request to endpoint
+        """
+        match endpoint:
+            case Endpoint.COLUMN:
+                self._patch_integration_v2_column(body)
