@@ -7,13 +7,8 @@ from .storage import Storage
 
 class Dictionary:
     """
-    Responsible for managing the approved column definition dictionary.
-    Methods are provided to perform both direct and fuzzy lookups of records by 'name'.
-    'name' corresponds to a column name in Alation.
-
-    Note
-    -
-    Initializing this class will read from the specified path or create it. The path must point to a json file.
+    Converts records into a dictionary. The resulting dictionary is basically a fancy hashmap.
+    The main responsibility is to make records "searchable" - methods are provided for performing both direct and fuzzy searches.
     """
 
     def __init__(self, storage: Storage):
@@ -21,11 +16,14 @@ class Dictionary:
         self.index: dict[int, Record] = {}
         self.name_index: defaultdict[str, set[int]] = defaultdict(set)
 
+        # there are 2 indexes that we need
+        # one by id (which is unqiue) and another by name to provide natural searching
+        # the id index maps 1:1 which the name index maps 1:many
         for r in self.storage.read():
             self.index[r.id] = r
             self.name_index[r.name].add(r.id)
 
-        self._name_cache = tuple(sorted(self.name_index.keys()))
+        self._name_cache: tuple[str, ...] = tuple(self.name_index.keys())
 
         self.new_record_count: int = 0
         self.updated_record_count: int = 0
@@ -49,6 +47,9 @@ class Dictionary:
         return [self.index[id] for id in ids] if ids else []
 
     def unique(self, records: list[Record]) -> list[Record]:
+        """
+        Filter a list of records so that only records with unique descriptions remain.
+        """
         seen: set[str] = set()
         unique: list[Record] = []
 
@@ -58,7 +59,6 @@ class Dictionary:
                 unique.append(record)
 
         return unique
-
 
     def fuzzy_lookup(self, lookup_value: str, threshold: int) -> list[Record]:
         """
@@ -77,7 +77,7 @@ class Dictionary:
             return self.lookup(best_match) if score >= threshold else []
 
     def _refresh_name_cache(self) -> None:
-        self._name_cache = tuple(sorted(self.name_index.keys()))
+        self._name_cache = tuple(self.name_index.keys())
 
     def add(self, record: Record) -> None:
         """
@@ -116,16 +116,6 @@ class Dictionary:
         # patch index if our record is stale
         self.index[record.id] = record
         self.updated_record_count += 1
-
-    def _generate_insert_query(self, record: Record):
-        fields = list(Record.model_fields.keys())
-        cols = ", ".join(fields)
-        placeholders = ", ".join([f"@{f}" for f in fields])
-        values = [getattr(record, f) for f in fields]
-        query = f"INSERT INTO some_table ({cols}) VALUES ({placeholders});"
-
-        return query, values
-
 
     def export_records(self, records: list[Record], path: str) -> None:
         """
