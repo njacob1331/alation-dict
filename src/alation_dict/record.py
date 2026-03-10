@@ -1,16 +1,16 @@
-from typing import ClassVar
+from typing import Any, ClassVar, Self
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 class Record(BaseModel):
     """
     Type respresenting both the Alation API response object
-    and corresponding dictionary entry.
+    and corresponding dictionary entry for columns.
     """
     base_url: ClassVar[str] = "https://alation.medcity.net"
     model_config = ConfigDict(
-        extra="allow",
+        extra="ignore",
         frozen=True
     )
 
@@ -19,6 +19,28 @@ class Record(BaseModel):
     title: str
     description: str
     url: str
+    table_name: str
+    page_status: str | None
+    phi: str | None
+    pii: str | None
+
+    @model_validator(mode="before")
+    def destructure_custom_fields(cls, data: Any):
+        custom_field_id_map = {
+            10030: "phi",
+            10031: "pii",
+            10045: "page_status"
+        }
+
+        for attr in custom_field_id_map.values():
+            data.setdefault(attr, None)
+
+        for field in data["custom_fields"]:
+            attr = custom_field_id_map.get(field["field_id"])
+            if attr:
+                data[attr] = field["value"]
+
+        return data
 
     @field_validator("description")
     def format_description(cls, v: str):
@@ -28,8 +50,16 @@ class Record(BaseModel):
     def format_url(cls, v: str):
         return urljoin(cls.base_url, v)
 
-    def diff(self, comp: Record):
-        a = set(self.model_dump().items())
-        b = set(comp.model_dump().items())
+    @classmethod
+    def patch(cls, record: Self, to: dict[str, Any]):
+        """
+        Patches a record with the values provided.
+        """
+        return record.model_copy(update=to)
 
-        return a ^ b
+    @classmethod
+    def patch_batch(cls, records: list[Self], to: dict[str, Any]):
+        """
+        Patches multiple records with the values provided.
+        """
+        return [cls.patch(record, to) for record in records]
