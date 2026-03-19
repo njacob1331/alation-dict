@@ -10,7 +10,7 @@ Builds/updates the dictionary based on the records contained in the Alation API 
 auth_token = "<YOUR_API_TOKEN>"
 
 client = Client(auth_token)
-storage = Storage(StorageType.FILE, "path/to/dictionary")
+storage = Storage(StorageType.LOCAL_FILE, "path/to/dictionary")
 dictionary = Dictionary(storage)
 
 for record in client.get(Endpoint.COLUMN):
