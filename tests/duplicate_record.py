@@ -6,25 +6,33 @@ Test to ensure no duplicate records get added
 """
 
 storage = Storage(
-    StorageType.FILE,
+    StorageType.LOCAL_FILE,
     "test.json"
 )
 dictionary = Dictionary(storage)
 
-x = Record(
+x = Record.model_construct(
     id=123,
     name="test",
     title="title",
     description="description",
-    url="https://url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
-y = Record(
+y = Record.model_construct(
     id=123,
     name="test",
     title="title",
     description="description",
-    url="https://url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
 # this adds x
