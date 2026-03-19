@@ -1,32 +1,28 @@
 from typing import Any
-from alation_dict import Client, Endpoint
+from alation_dict.record import Record
+from alation_dict.dictionary import Dictionary
+from alation_dict.storage import Storage, StorageType
 
 """
-Patches records with the specified values. The record that is linked
-will have its title and description changed to whats specified.
+Patches records with the specified values. This can be combined with the PATCH /integration/v2/column/ endpoint
+to perform "alignment" (ie column x is defined 10 different ways across multiple schemas and we want them all
+to have a consistent title and description)
 """
-
-TEST_ID = 12345
 
 # these are the changes we want to make
 changes: dict[str, Any] = {
-    "id": TEST_ID,
     "title": "best title",
-    "description": "best description"
+    "description": "best description",
+    "phi": "No",
+    "pii": "No"
 }
 
-auth_token = "<YOUR_API_TOKEN>"
+storage = Storage(StorageType.LOCAL_FILE, "path/to/dictionary")
+dictionary = Dictionary(storage)
 
-client = Client(auth_token)
-client.patch(Endpoint.COLUMN, changes)
+lookup_result = dictionary.lookup("coid")
 
-# if we were going to do this with multiple values, we could query the dictionary
-# to get all the necessary info
-
-# storage = Storage(StorageType.FILE, "path/to/dictionary")
-# dictionary = Dictionary(storage)
-
-# for some in dictionary.lookup("something"):
-#     changes["id"] = some.id
-
-#     client.patch(Endpoint.COLUMN, changes)
+# for every instance of coid, regardless of schema, set the
+# title and description to what we have defined above
+for result in lookup_result:
+    print(f"\nORIGINAL:\n{result}\n\nPATCHED:\n{Record.patch(result, changes)}\n")
