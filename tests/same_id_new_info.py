@@ -7,25 +7,33 @@ the indicies update properly to ensure the validity of lookups
 """
 
 storage = Storage(
-    StorageType.FILE,
+    StorageType.LOCAL_FILE,
     "test.json"
 )
 dictionary = Dictionary(storage)
 
-x = Record(
+x = Record.model_construct(
     id=123,
     name="test",
     title="title",
     description="description",
-    url="https://url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
-y = Record(
+y = Record.model_construct(
     id=123,
     name="test",
     title="new title",
     description="new description",
-    url="https://new-url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
 # this adds x
