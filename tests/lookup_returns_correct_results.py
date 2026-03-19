@@ -6,25 +6,33 @@ Test to ensure that all records with a given name are returned
 """
 
 storage = Storage(
-    StorageType.FILE,
+    StorageType.LOCAL_FILE,
     "test.json"
 )
 dictionary = Dictionary(storage)
 
-x = Record(
+x = Record.model_construct(
     id=123,
     name="test",
     title="title",
     description="description",
-    url="https://url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
-y = Record(
+y = Record.model_construct(
     id=456,
     name="test",
-    title="different title",
-    description="different description",
-    url="https://diff-url.com"
+    title="title",
+    description="diff description",
+    url="https://diff-url.com",
+    table_name="diff_table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
 dictionary.add(x)
