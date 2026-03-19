@@ -5,14 +5,28 @@ from typing import Any
 import requests
 from urllib.parse import urljoin
 
+# this serves only to suppress requests warnings
+# during dev. in prod, verify should be set = True
+# and this can be removed
 import warnings
-
 warnings.filterwarnings("ignore")
 
 from .record import Record
 
 class Endpoint(Enum):
-    COLUMN = 0
+    """
+    Endpoints supported by the API Client. Each variant
+    carries default request params that are used if params are not
+    set by the user.
+    """
+    # ref: https://developer.alation.com/dev/reference/getcolumns
+    COLUMN = {
+        "fields": "id,name,title,description,url,table_name,custom_fields",     # fields we want returned
+        "ds_id": 15,                                                            # maps to HCA- BigQuery - HIN DEV
+        "custom_fields": json.dumps(                                            # filters for Verification Status = "Approved"
+            [{"field_id": 10049, "value": "Approved"}]
+        )
+    }
 
 class Client:
     """
@@ -34,7 +48,7 @@ class Client:
 
     def _get(self, url: str, params: dict[str, Any] | None):
         """
-        Internal method for handling GET request boilerplate.
+        GET request boilerplate
         """
         response = self.session.get(
             url=url,
@@ -49,62 +63,28 @@ class Client:
 
         return response, next_page_url
 
-    def _get_integration_v2_column(self):
+    def _get_integration_v2_column(self, params: dict[str, Any] | None = None):
         """
         GET request for the integration/v2/column/ endpoint
         """
 
         url = urljoin(self.base_url, "/integration/v2/column/")
-        params = {
-            "fields": "id,name,title,description,url,ds_id,table_name,custom_fields",
-            "ds_id": 15,
-            "custom_fields": json.dumps(
-                [{"field_id": 10049, "value": "Approved"}]
-            )
-        }
 
         while url:
             response, url = self._get(url, params)
-            params = None
+            params = None   # params are already present in 'next page' urls
 
             for record in response.json():
                 yield Record(**record)
 
-    def get(self, endpoint: Endpoint) -> Iterator[Record]:
+    def get(self, endpoint: Endpoint, params: dict[str, Any] | None = None) -> Iterator[Record]:
         """
         GET request to endpoint
         """
-
-        # this pattern makes it easy to support more endpoints in the future
+        # this pattern makes it easy to support more endpoints in the future (ex we want to
+        # fetch data quality rules from Alation)
         match endpoint:
             case Endpoint.COLUMN:
-                yield from self._get_integration_v2_column()
-
-    def _patch(self, url: str, body: dict[str, Any]):
-        """
-        Internal method for handling PATCH request boilerplate.
-        """
-
-        response = self.session.patch(
-            url=url,
-            json=[body],
-            verify=False
-        )
-
-        response.raise_for_status()
-
-    def _patch_integration_v2_column(self, body: dict[str, Any]):
-        """
-        PATCH request for the integration/v2/column/ endpoint
-        """
-
-        url = urljoin(self.base_url, "/integration/v2/document/?ds_id=15")
-        self._patch(url, body)
-
-    def patch(self, endpoint: Endpoint, body: dict[str, Any]):
-        """
-        PATCH request to endpoint
-        """
-        match endpoint:
-            case Endpoint.COLUMN:
-                self._patch_integration_v2_column(body)
+                yield from self._get_integration_v2_column(params or endpoint.value)
+            # case Endpoint.ANOTHER:
+                # yield from self._get_another_endpoint(params or endpoint.value)
