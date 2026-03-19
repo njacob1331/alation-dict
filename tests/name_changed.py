@@ -8,25 +8,33 @@ the index for the new name now contains said record
 """
 
 storage = Storage(
-    StorageType.FILE,
+    StorageType.LOCAL_FILE,
     "test.json"
 )
 dictionary = Dictionary(storage)
 
-x = Record(
+x = Record.model_construct(
     id=123,
     name="name",
     title="title",
     description="description",
-    url="https://url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
-y = Record(
+y = Record.model_construct(
     id=123,
     name="new name",
     title="title",
     description="description",
-    url="https://url.com"
+    url="https://url.com",
+    table_name="table_name",
+    page_status="status",
+    phi="PHI",
+    pii="PII"
 )
 
 dictionary.add(x)
