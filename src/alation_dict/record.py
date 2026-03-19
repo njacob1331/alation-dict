@@ -3,6 +3,12 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+CUSTOM_FIELD_ID_MAP = {
+    10030: "phi",
+    10031: "pii",
+    10045: "page_status",
+}
+
 class Record(BaseModel):
     """
     Type respresenting both the Alation API response object
@@ -26,17 +32,14 @@ class Record(BaseModel):
 
     @model_validator(mode="before")
     def destructure_custom_fields(cls, data: Any):
-        custom_field_id_map = {
-            10030: "phi",
-            10031: "pii",
-            10045: "page_status"
-        }
-
-        for attr in custom_field_id_map.values():
+        """
+        Maps the array of custom fields received from Alation to Record fields
+        """
+        for attr in CUSTOM_FIELD_ID_MAP.values():
             data.setdefault(attr, None)
 
         for field in data["custom_fields"]:
-            attr = custom_field_id_map.get(field["field_id"])
+            attr = CUSTOM_FIELD_ID_MAP.get(field["field_id"])
             if attr:
                 data[attr] = field["value"]
 
@@ -44,10 +47,12 @@ class Record(BaseModel):
 
     @field_validator("description")
     def format_description(cls, v: str):
+        # Alation stores descriptions as raw html
         return BeautifulSoup(v, "html.parser").get_text(strip=True)
 
     @field_validator("url")
     def format_url(cls, v: str):
+        # Builds the full url for each column record
         return urljoin(cls.base_url, v)
 
     @classmethod
